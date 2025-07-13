@@ -27,7 +27,16 @@
     const supabase = createClient("https://jtrenbwpefzevqlkcfly.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4");
 
     async function authenticateAndSetup() {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const token = window.tokenFromFlutter;
+
+      if (!token) {
+        document.getElementById('auth-status').innerText = "Token not injected.";
+      return;
+      }
+
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+
+      // const { data: { session }, error } = await supabase.auth.getSession();
       if (!session) {
         document.getElementById('auth-status').innerText = "You must be signed in.";
         return;
