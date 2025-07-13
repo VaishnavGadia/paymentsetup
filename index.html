@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Secure Payment Setup</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    #card-element { padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px; }
+    button { padding: 10px 20px; font-size: 16px; }
+    #result-message { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Enter Your Card Details</h2>
+  <div id="auth-status">Authenticating...</div>
+
+  <form id="payment-form" style="display:none;">
+    <div id="card-element"></div>
+    <button type="submit">Save Payment Method</button>
+    <div id="result-message"></div>
+  </form>
+
+  <script>
+    const stripe = Stripe("pk_test_51RDmCP4eAi3CoBPgCCKylfq60XZxTp7X44vvqSm3hygIhGW7gRHqfLKojXEgnWzGmz2eFh6qyTHGVk43gXbBE7Hp007gTqtMMN");
+    const supabase = createClient("https://jtrenbwpefzevqlkcfly.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4");
+
+    async function authenticateAndSetup() {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!session) {
+        document.getElementById('auth-status').innerText = "You must be signed in.";
+        return;
+      }
+
+      const email = session.user.email;
+
+      document.getElementById('auth-status').innerText = `Signed in as ${email}`;
+
+      // Call edge function to get SetupIntent client_secret
+      const response = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-stripe-customer", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: email,
+          name: "" // Optional if you store name in user_info
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        document.getElementById('auth-status').innerText = `Error: ${data.error}`;
+        return;
+      }
+
+      const clientSecret = data.setup_intent_client_secret;
+      const elements = stripe.elements();
+      const card = elements.create('card');
+      card.mount('#card-element');
+
+      document.getElementById('payment-form').style.display = 'block';
+
+      document.getElementById('payment-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const { setupIntent, error } = await stripe.confirmCardSetup(clientSecret, {
+          payment_method: { card: card }
+        });
+
+        if (error) {
+          document.getElementById('result-message').innerText = `⚠️ ${error.message}`;
+        } else {
+          document.getElementById('result-message').innerText = "✅ Card saved!";
+
+          // Send payment_method_id to Supabase
+          await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              payment_method_id: setupIntent.payment_method
+            })
+          });
+
+          // ✅ Notify Flutter WebView inside your FlutterFlow app
+          if (window.Flutter) {
+            Flutter.postMessage("payment_setup_complete");
+          } else {
+            console.log("Flutter WebView not found");
+          }
+        }
+      });
+    }
+
+    authenticateAndSetup();
+  </script>
+</body>
+</html>
