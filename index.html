@@ -1,6 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta charset="UTF-8" />
+<title>Test Supabase Token</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+</head>
+<body>
+<h2>Authentication Test</h2>
+<div id="auth-status">Authenticating...</div>
+
+<script>
+  const supabase = supabase.createClient(
+    "https://jtrenbwpefzevqlkcfly.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4"
+  );
+
+  async function authenticate() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (!token) {
+      document.getElementById('auth-status').innerText = "No token in URL.";
+      return;
+    }
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      document.getElementById('auth-status').innerText = "Invalid token or user not found.";
+      console.error(error);
+      return;
+    }
+    document.getElementById('auth-status').innerText = `Signed in as ${user.email}`;
+  }
+
+  authenticate();
+</script>
+</body>
+</html>
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8">
   <title>Secure Payment Setup</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -104,3 +146,4 @@
   </script>
 </body>
 </html>
+ -->
