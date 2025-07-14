@@ -1,4 +1,153 @@
 <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>🔐 Setup Default Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    #payment-element {
+      margin: 20px 0;
+      width: 100%;
+      max-width: 400px;
+    }
+    button {
+      background: #00b386;
+      border: none;
+      padding: 12px 20px;
+      color: white;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #log {
+      margin-top: 20px;
+      background: #1d1d1d;
+      padding: 1rem;
+      width: 100%;
+      max-width: 600px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h2>🔐 Setup Default Payment</h2>
+  <div id="payment-element">Loading Stripe form...</div>
+  <button id="saveBtn" disabled>Save Payment Method</button>
+  <div id="log">Logs:</div>
+
+  <script>
+    let stripe, elements, setupIntentClientSecret, supabaseToken;
+
+    const log = msg => {
+      console.log(msg);
+      document.getElementById("log").textContent += `\n${msg}`;
+    };
+
+    function sendResult(success, message) {
+      const payload = { type: 'VERIFY_RESULT', success, message };
+      if (typeof FlutterFlowChannel !== 'undefined') {
+        FlutterFlowChannel.postMessage(JSON.stringify(payload));
+      }
+      window.parent?.postMessage(payload, '*');
+    }
+
+    async function initStripe(token) {
+      supabaseToken = token;
+      log("🔐 Fetching setup intent...");
+      const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/create-setup-intent", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.client_secret) {
+        log("❌ Failed to create SetupIntent");
+        sendResult(false, data.error || "SetupIntent failed");
+        return;
+      }
+
+      setupIntentClientSecret = data.client_secret;
+
+      stripe = Stripe("pk_live_..."); // Replace with your public key
+      elements = stripe.elements({ clientSecret: setupIntentClientSecret });
+      const paymentElement = elements.create("payment");
+      paymentElement.mount("#payment-element");
+
+      document.getElementById("saveBtn").disabled = false;
+      log("✅ Stripe PaymentElement ready.");
+    }
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      log("💳 Confirming payment method...");
+      const { setupIntent, error } = await stripe.confirmSetup({
+        elements,
+        confirmParams: { return_url: "https://yourdomain.com" }
+      });
+
+      if (error) {
+        log(`❌ ${error.message}`);
+        sendResult(false, error.message);
+        return;
+      }
+
+      const paymentMethodId = setupIntent.payment_method;
+      log("✅ Got payment_method_id: " + paymentMethodId);
+
+      const saveRes = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/save-payment-method", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ payment_method_id: paymentMethodId })
+      });
+
+      const saveData = await saveRes.json();
+      if (saveRes.ok) {
+        log("✅ Payment method saved.");
+        sendResult(true, "Saved successfully.");
+      } else {
+        log("❌ Failed to save: " + saveData.error);
+        sendResult(false, saveData.error);
+      }
+    });
+
+    window.addEventListener("message", (event) => {
+      const { type, token } = event.data || {};
+      if (type === "TOKEN" && token) {
+        log("🔑 Received token from FlutterFlow.");
+        initStripe(token);
+      }
+    });
+
+    const tokenFromUrl = new URLSearchParams(window.location.search).get("token");
+    if (tokenFromUrl) {
+      log("🔑 Token found in URL param.");
+      initStripe(tokenFromUrl);
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -212,7 +361,7 @@
     }
   </script>
 </body>
-</html>
+</html> -->
 
 
 
