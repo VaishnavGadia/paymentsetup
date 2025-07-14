@@ -83,8 +83,6 @@
       setupIntentClientSecret = data.client_secret;
 
       stripe = Stripe("__STRIPE_PUBLIC_KEY__");
-
-      //stripe = Stripe("pk_test_51RDmCP4eAi3CoBPgCCKylfq60XZxTp7X44vvqSm3hygIhGW7gRHqfLKojXEgnWzGmz2eFh6qyTHGVk43gXbBE7Hp007gTqtMMN"); // Replace with your public key
       elements = stripe.elements({ clientSecret: setupIntentClientSecret });
       const paymentElement = elements.create("payment");
       paymentElement.mount("#payment-element");
