@@ -92,9 +92,12 @@
     }
 
 
-    document.getElementById("saveBtn").addEventListener("click", async () => {
+document.getElementById("saveBtn").addEventListener("click", async () => {
   const saveBtn = document.getElementById("saveBtn");
-  saveBtn.disabled = true; // ✅ Prevent double clicks
+  const originalText = saveBtn.textContent;
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving..."; // 👀 Update UI
   log("💳 Confirming payment method...");
 
   const { setupIntent, error } = await stripe.confirmSetup({
@@ -105,7 +108,8 @@
   if (error) {
     log(`❌ ${error.message}`);
     sendResult(false, error.message);
-    saveBtn.disabled = false; // 🔁 Allow retry
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalText; // 🔁 Revert UI
     return;
   }
 
@@ -124,13 +128,16 @@
   const saveData = await saveRes.json();
   if (saveRes.ok) {
     log("✅ Payment method saved.");
+    saveBtn.textContent = "Saved ✅";
     sendResult(true, "Saved successfully.");
   } else {
     log("❌ Failed to save: " + saveData.error);
     sendResult(false, saveData.error);
-    saveBtn.disabled = false; // 🔁 Allow retry if saving fails
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalText; // 🔁 Revert UI
   }
 });
+
 
 
     
