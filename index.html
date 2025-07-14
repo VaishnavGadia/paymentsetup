@@ -95,7 +95,7 @@
       log("💳 Confirming payment method...");
       const { setupIntent, error } = await stripe.confirmSetup({
         elements,
-        confirmParams: { return_url: "https://app.flutterflow.io/project/grocery-delivery-app-pucyq7?tab=widgetTree&page=paymentsuccess" }
+        confirmParams: { return_url: "" }
       });
 
       if (error) {
