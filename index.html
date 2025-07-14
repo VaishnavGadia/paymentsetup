@@ -65,7 +65,7 @@
     async function initStripe(token) {
       supabaseToken = token;
       log("🔐 Fetching setup intent...");
-      const res = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/create-setup-intent", {
+      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-setup-intent", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -82,7 +82,7 @@
 
       setupIntentClientSecret = data.client_secret;
 
-      stripe = Stripe("pk_live_..."); // Replace with your public key
+      stripe = Stripe("pk_test_51RDmCP4eAi3CoBPgCCKylfq60XZxTp7X44vvqSm3hygIhGW7gRHqfLKojXEgnWzGmz2eFh6qyTHGVk43gXbBE7Hp007gTqtMMN"); // Replace with your public key
       elements = stripe.elements({ clientSecret: setupIntentClientSecret });
       const paymentElement = elements.create("payment");
       paymentElement.mount("#payment-element");
@@ -95,7 +95,7 @@
       log("💳 Confirming payment method...");
       const { setupIntent, error } = await stripe.confirmSetup({
         elements,
-        confirmParams: { return_url: "https://yourdomain.com" }
+        confirmParams: { return_url: "https://app.flutterflow.io/project/grocery-delivery-app-pucyq7?tab=widgetTree&page=paymentsuccess" }
       });
 
       if (error) {
@@ -107,7 +107,7 @@
       const paymentMethodId = setupIntent.payment_method;
       log("✅ Got payment_method_id: " + paymentMethodId);
 
-      const saveRes = await fetch("https://YOUR_PROJECT.supabase.co/functions/v1/save-payment-method", {
+      const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${supabaseToken}`,
