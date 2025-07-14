@@ -1,40 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Test Supabase Token</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <meta charset="UTF-8" />
+  <title>Setup Payment</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 </head>
 <body>
-<h2>Authentication Test</h2>
-<div id="auth-status">Authenticating...</div>
+  <h2>🔐 Setup Payment Method</h2>
+  <div id="status">Preparing payment...</div>
+  <form id="payment-form">
+    <div id="payment-element"></div>
+    <button type="submit">Save Card</button>
+  </form>
 
-<script>
-  const supabase = supabase.createClient(
-    "https://jtrenbwpefzevqlkcfly.supabase.co",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4"
-  );
+  <script>
+    const supabase = supabase.createClient("https://<your-project>.supabase.co", "<anon-key>");
 
-  async function authenticate() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    if (!token) {
-      document.getElementById('auth-status').innerText = "No token in URL.";
-      return;
+    async function run() {
+      const token = new URLSearchParams(window.location.search).get("token");
+      if (!token) return show("Missing token");
+
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (error || !user) return show("Invalid token");
+
+      const res = await fetch("https://<your-project>.supabase.co/functions/v1/create-payment-setup", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const setup = await res.json();
+
+      if (!setup.setup_intent_client_secret) return show("Failed to get setup intent");
+
+      const stripe = Stripe("<your-publishable-key>");
+      const elements = stripe.elements();
+      const paymentElement = elements.create("payment");
+      paymentElement.mount("#payment-element");
+
+      document.getElementById("payment-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const { setupIntent, error } = await stripe.confirmSetup({
+          elements,
+          confirmParams: {
+            return_url: window.location.href
+          },
+          redirect: "if_required"
+        });
+
+        if (error) {
+          return show("Error: " + error.message);
+        }
+
+        const saveRes = await fetch("https://<your-project>.supabase.co/functions/v1/save-payment-method", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ payment_method_id: setupIntent.payment_method })
+        });
+
+        const saveJson = await saveRes.json();
+        if (saveRes.ok) {
+          show("✅ Payment method saved successfully.");
+        } else {
+          show("❌ Failed to save: " + saveJson.error);
+        }
+      });
     }
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      document.getElementById('auth-status').innerText = "Invalid token or user not found.";
-      console.error(error);
-      return;
-    }
-    document.getElementById('auth-status').innerText = `Signed in as ${user.email}`;
-  }
 
-  authenticate();
-</script>
+    function show(message) {
+      document.getElementById("status").innerText = message;
+    }
+
+    run();
+  </script>
 </body>
 </html>
+
 
 
 
