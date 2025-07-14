@@ -77,6 +77,216 @@
           "Content-Type": "application/json"
         }
       });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.client_secret) {
+        log("❌ Failed to create SetupIntent");
+        sendResult(false, data.error || "SetupIntent failed");
+        return;
+      }
+
+      setupIntentClientSecret = data.client_secret;
+
+      stripe = Stripe("__STRIPE_PUBLIC_KEY__"); // Replace during build step
+      elements = stripe.elements({ clientSecret: setupIntentClientSecret });
+      const paymentElement = elements.create("payment");
+      paymentElement.mount("#payment-element");
+
+      document.getElementById("saveBtn").disabled = false;
+      log("✅ Stripe PaymentElement ready.");
+    }
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const saveBtn = document.getElementById("saveBtn");
+      const retryBtn = document.getElementById("retryBtn");
+      const originalText = saveBtn.textContent;
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      retryBtn.style.display = "none";
+      log("💳 Confirming payment method...");
+
+      const { setupIntent, error } = await stripe.confirmSetup({
+        elements,
+        redirect: "if_required"
+      });
+
+      if (error) {
+        log(`❌ ${error.message}`);
+        sendResult(false, error.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+        retryBtn.style.display = "inline-block";
+        return;
+      }
+
+      const paymentMethodId = setupIntent.payment_method;
+      log("✅ Got payment_method_id: " + paymentMethodId);
+
+      // Timeout wrapper
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      let saveRes, saveData;
+      try {
+        saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${supabaseToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ payment_method_id: paymentMethodId }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        saveData = await saveRes.json();
+      } catch (err) {
+        log("⏱️ Request timeout or error: " + err.message);
+        sendResult(false, "Network timeout or failure");
+        saveBtn.textContent = "Retry Save";
+        saveBtn.disabled = false;
+        retryBtn.style.display = "inline-block";
+        return;
+      }
+
+      if (saveRes.ok) {
+        log("✅ Payment method saved.");
+        saveBtn.textContent = "Saved ✅";
+        sendResult(true, "Saved successfully.");
+      } else {
+        log("❌ Failed to save: " + saveData.error);
+        sendResult(false, saveData.error);
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+        retryBtn.style.display = "inline-block";
+      }
+    });
+
+    document.getElementById("retryBtn").addEventListener("click", () => {
+      document.getElementById("retryBtn").style.display = "none";
+      document.getElementById("saveBtn").click();
+    });
+
+    // Handle message from FlutterFlow
+    window.addEventListener("message", (event) => {
+      const { type, token } = event.data || {};
+      if (type === "TOKEN" && token) {
+        log("🔑 Received token from FlutterFlow.");
+        initStripe(token);
+      }
+    });
+
+    // Fallback token retrieval with retries
+    function checkTokenFallback(retry = 0) {
+      const tokenFromUrl = new URLSearchParams(window.location.search).get("token");
+      if (tokenFromUrl) {
+        log("🔑 Token found in URL param.");
+        initStripe(tokenFromUrl);
+        return;
+      }
+
+      if (supabaseToken) return;
+
+      if (retry >= 10) {
+        log("❌ Token not received after multiple attempts.");
+        document.getElementById("retryBtn").style.display = "inline-block";
+        return;
+      }
+
+      log(`⏳ Waiting for token... Attempt ${retry + 1}`);
+      setTimeout(() => checkTokenFallback(retry + 1), 1000);
+    }
+
+    // Kick off fallback token handling
+    checkTokenFallback();
+  </script>
+</body>
+</html>
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>🔐 Setup Default Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    #payment-element {
+      margin: 20px 0;
+      width: 100%;
+      max-width: 400px;
+    }
+    button {
+      background: #00b386;
+      border: none;
+      padding: 12px 20px;
+      color: white;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #log {
+      margin-top: 20px;
+      background: #1d1d1d;
+      padding: 1rem;
+      width: 100%;
+      max-width: 600px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+    #retryBtn {
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>🔐 Setup Default Payment</h2>
+  <div id="payment-element">Loading Stripe form...</div>
+  <button id="saveBtn" disabled>Save Payment Method</button>
+  <button id="retryBtn">🔁 Retry</button>
+  <div id="log">Logs:</div>
+
+  <script>
+    let stripe, elements, setupIntentClientSecret, supabaseToken;
+
+    const log = msg => {
+      console.log(msg);
+      document.getElementById("log").textContent += `\n${msg}`;
+    };
+
+    function sendResult(success, message) {
+      const payload = { type: 'VERIFY_RESULT', success, message };
+      if (typeof FlutterFlowChannel !== 'undefined') {
+        FlutterFlowChannel.postMessage(JSON.stringify(payload));
+      }
+      window.parent?.postMessage(payload, '*');
+    }
+
+    async function initStripe(token) {
+      supabaseToken = token;
+      log("🔐 Fetching setup intent...");
+      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-setup-intent", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
       const data = await res.json();
 
       if (!res.ok || !data.client_secret) {
@@ -181,149 +391,5 @@
     }
   </script>
 </body>
-</html>
-
-
-
-
-
-<!-- <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>🔐 Setup Default Payment</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://js.stripe.com/v3/"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #121212;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem;
-    }
-    #payment-element {
-      margin: 20px 0;
-      width: 100%;
-      max-width: 400px;
-    }
-    button {
-      background: #00b386;
-      border: none;
-      padding: 12px 20px;
-      color: white;
-      font-size: 16px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    #log {
-      margin-top: 20px;
-      background: #1d1d1d;
-      padding: 1rem;
-      width: 100%;
-      max-width: 600px;
-      font-size: 0.85rem;
-      white-space: pre-wrap;
-    }
-  </style>
-</head>
-<body>
-  <h2>🔐 Setup Default Payment</h2>
-  <div id="payment-element">Loading Stripe form...</div>
-  <button id="saveBtn" disabled>Save Payment Method</button>
-  <div id="log">Logs:</div>
-
-  <script>
-    let stripe, elements, setupIntentClientSecret, supabaseToken;
-
-    const log = msg => {
-      console.log(msg);
-      document.getElementById("log").textContent += `\n${msg}`;
-    };
-
-    function sendResult(success, message) {
-      const payload = { type: 'VERIFY_RESULT', success, message };
-      if (typeof FlutterFlowChannel !== 'undefined') {
-        FlutterFlowChannel.postMessage(JSON.stringify(payload));
-      }
-      window.parent?.postMessage(payload, '*');
-    }
-
-    async function initStripe(token) {
-      supabaseToken = token;
-      log("🔐 Fetching setup intent...");
-      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-setup-intent", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.client_secret) {
-        log("❌ Failed to create SetupIntent");
-        sendResult(false, data.error || "SetupIntent failed");
-        return;
-      }
-
-      setupIntentClientSecret = data.client_secret;
-
-      stripe = Stripe("__STRIPE_PUBLIC_KEY__");
-      elements = stripe.elements({ clientSecret: setupIntentClientSecret });
-      const paymentElement = elements.create("payment");
-      paymentElement.mount("#payment-element");
-
-      document.getElementById("saveBtn").disabled = false;
-      log("✅ Stripe PaymentElement ready.");
-    }
-
-
-document.getElementById("saveBtn").addEventListener("click", async () => {
-  const saveBtn = document.getElementById("saveBtn");
-  const originalText = saveBtn.textContent;
-
-  saveBtn.disabled = true;
-  saveBtn.textContent = "Saving..."; // 👀 Update UI
-  log("💳 Confirming payment method...");
-
-  const { setupIntent, error } = await stripe.confirmSetup({
-    elements,
-    redirect: "if_required"
-  });
-
-  if (error) {
-    log(`❌ ${error.message}`);
-    sendResult(false, error.message);
-    saveBtn.disabled = false;
-    saveBtn.textContent = originalText; // 🔁 Revert UI
-    return;
-  }
-
-  const paymentMethodId = setupIntent.payment_method;
-  log("✅ Got payment_method_id: " + paymentMethodId);
-
-  const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${supabaseToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ payment_method_id: paymentMethodId })
-  });
-
-  const saveData = await saveRes.json();
-  if (saveRes.ok) {
-    log("✅ Payment method saved.");
-    saveBtn.textContent = "Saved ✅";
-    sendResult(true, "Saved successfully.");
-  } else {
-    log("❌ Failed to save: " + saveData.error);
-    sendResult(false, saveData.error);
-    saveBtn.disabled = false;
-    saveBtn.textContent = originalText; // 🔁 Revert UI
-  }
-}); -->
+</html> -->
 
