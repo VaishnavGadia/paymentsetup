@@ -15,7 +15,7 @@
   </form>
 
   <script>
-    const supabase = supabase.createClient("https://<your-project>.supabase.co", "<anon-key>");
+    const supabase = supabase.createClient("https://jtrenbwpefzevqlkcfly.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4");
 
     async function run() {
       const token = new URLSearchParams(window.location.search).get("token");
@@ -24,7 +24,7 @@
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (error || !user) return show("Invalid token");
 
-      const res = await fetch("https://<your-project>.supabase.co/functions/v1/create-payment-setup", {
+      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-stripe-customer", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -51,7 +51,7 @@
           return show("Error: " + error.message);
         }
 
-        const saveRes = await fetch("https://<your-project>.supabase.co/functions/v1/save-payment-method", {
+        const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
