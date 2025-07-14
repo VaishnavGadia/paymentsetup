@@ -91,41 +91,84 @@
       log("✅ Stripe PaymentElement ready.");
     }
 
+
     document.getElementById("saveBtn").addEventListener("click", async () => {
-      log("💳 Confirming payment method...");
-      const { setupIntent, error } = await stripe.confirmSetup({
-        elements,
-        redirect: "if_required",
-       // confirmParams: { return_url: "" }
-      });
+  const saveBtn = document.getElementById("saveBtn");
+  saveBtn.disabled = true; // ✅ Prevent double clicks
+  log("💳 Confirming payment method...");
 
-      if (error) {
-        log(`❌ ${error.message}`);
-        sendResult(false, error.message);
-        return;
-      }
+  const { setupIntent, error } = await stripe.confirmSetup({
+    elements,
+    redirect: "if_required"
+  });
 
-      const paymentMethodId = setupIntent.payment_method;
-      log("✅ Got payment_method_id: " + paymentMethodId);
+  if (error) {
+    log(`❌ ${error.message}`);
+    sendResult(false, error.message);
+    saveBtn.disabled = false; // 🔁 Allow retry
+    return;
+  }
 
-      const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${supabaseToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ payment_method_id: paymentMethodId })
-      });
+  const paymentMethodId = setupIntent.payment_method;
+  log("✅ Got payment_method_id: " + paymentMethodId);
 
-      const saveData = await saveRes.json();
-      if (saveRes.ok) {
-        log("✅ Payment method saved.");
-        sendResult(true, "Saved successfully.");
-      } else {
-        log("❌ Failed to save: " + saveData.error);
-        sendResult(false, saveData.error);
-      }
-    });
+  const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${supabaseToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ payment_method_id: paymentMethodId })
+  });
+
+  const saveData = await saveRes.json();
+  if (saveRes.ok) {
+    log("✅ Payment method saved.");
+    sendResult(true, "Saved successfully.");
+  } else {
+    log("❌ Failed to save: " + saveData.error);
+    sendResult(false, saveData.error);
+    saveBtn.disabled = false; // 🔁 Allow retry if saving fails
+  }
+});
+
+
+    
+    // document.getElementById("saveBtn").addEventListener("click", async () => {
+    //   log("💳 Confirming payment method...");
+    //   const { setupIntent, error } = await stripe.confirmSetup({
+    //     elements,
+    //     redirect: "if_required",
+    //    // confirmParams: { return_url: "" }
+    //   });
+
+    //   if (error) {
+    //     log(`❌ ${error.message}`);
+    //     sendResult(false, error.message);
+    //     return;
+    //   }
+
+    //   const paymentMethodId = setupIntent.payment_method;
+    //   log("✅ Got payment_method_id: " + paymentMethodId);
+
+    //   const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+    //     method: "POST",
+    //     headers: {
+    //       Authorization: `Bearer ${supabaseToken}`,
+    //       "Content-Type": "application/json"
+    //     },
+    //     body: JSON.stringify({ payment_method_id: paymentMethodId })
+    //   });
+
+    //   const saveData = await saveRes.json();
+    //   if (saveRes.ok) {
+    //     log("✅ Payment method saved.");
+    //     sendResult(true, "Saved successfully.");
+    //   } else {
+    //     log("❌ Failed to save: " + saveData.error);
+    //     sendResult(false, saveData.error);
+    //   }
+    // });
 
     window.addEventListener("message", (event) => {
       const { type, token } = event.data || {};
