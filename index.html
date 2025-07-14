@@ -2,79 +2,152 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Setup Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🔐 Setup Payment Method</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f3f3f3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    #status {
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 500px;
+      margin-bottom: 1rem;
+    }
+    #card-element {
+      margin-top: 1rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.5rem 1.5rem;
+      font-size: 1rem;
+    }
+  </style>
   <script src="https://js.stripe.com/v3/"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 </head>
 <body>
+
   <h2>🔐 Setup Payment Method</h2>
-  <div id="status">Preparing payment...</div>
-  <form id="payment-form">
-    <div id="payment-element"></div>
-    <button type="submit">Save Card</button>
+  <div id="status">Waiting for token from FlutterFlow...</div>
+  <form id="payment-form" style="display:none;">
+    <div id="card-element"></div>
+    <button type="submit">💳 Save Card</button>
   </form>
 
   <script>
-    const supabase = supabase.createClient("https://jtrenbwpefzevqlkcfly.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0cmVuYndwZWZ6ZXZxbGtjZmx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ5NDQxMzgsImV4cCI6MjA2MDUyMDEzOH0.SWIiKN-wDJcIK23H5IuXi4x9vnmRBUcvc5xDT99LUv4");
+    const statusDiv = document.getElementById('status');
+    const form = document.getElementById('payment-form');
+    let stripe, elements, cardElement;
 
-    async function run() {
-      const token = new URLSearchParams(window.location.search).get("token");
-      if (!token) return show("Missing token");
+    function log(message) {
+      console.log(message);
+      statusDiv.innerText = message;
+    }
 
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (error || !user) return show("Invalid token");
+    function sendVerificationResult(success, message) {
+      const payload = { type: 'VERIFY_RESULT', success, message };
 
-      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-stripe-customer", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const setup = await res.json();
-
-      if (!setup.setup_intent_client_secret) return show("Failed to get setup intent");
-
-      const stripe = Stripe("<your-publishable-key>");
-      const elements = stripe.elements();
-      const paymentElement = elements.create("payment");
-      paymentElement.mount("#payment-element");
-
-      document.getElementById("payment-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const { setupIntent, error } = await stripe.confirmSetup({
-          elements,
-          confirmParams: {
-            return_url: window.location.href
-          },
-          redirect: "if_required"
-        });
-
-        if (error) {
-          return show("Error: " + error.message);
+      if (typeof FlutterFlowChannel !== 'undefined') {
+        try {
+          FlutterFlowChannel.postMessage(JSON.stringify(payload));
+        } catch (err) {
+          console.warn("⚠️ FlutterFlowChannel error:", err);
         }
+      }
 
-        const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+      try {
+        window.parent.postMessage(payload, '*');
+      } catch (err) {
+        console.warn("⚠️ postMessage error:", err);
+      }
+    }
+
+    window.addEventListener("message", async (event) => {
+      const { type, token } = event.data;
+      if (type !== "TOKEN" || !token) return;
+
+      log("🔄 Verifying token with Supabase...");
+
+      try {
+        // 1. Create Stripe Customer and Setup Intent
+        const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-stripe-customer", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
           },
-          body: JSON.stringify({ payment_method_id: setupIntent.payment_method })
         });
 
-        const saveJson = await saveRes.json();
-        if (saveRes.ok) {
-          show("✅ Payment method saved successfully.");
-        } else {
-          show("❌ Failed to save: " + saveJson.error);
-        }
-      });
-    }
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Unknown error');
 
-    function show(message) {
-      document.getElementById("status").innerText = message;
-    }
+        const clientSecret = result.setup_intent_client_secret;
+        const stripeCustomerId = result.stripe_customer_id;
 
-    run();
+        log("✅ Token verified. Setup Intent created.\nStripe Customer ID: " + stripeCustomerId);
+
+        // 2. Show Stripe card form
+        stripe = Stripe("pk_test_YOUR_PUBLIC_KEY"); // Replace with your real key
+        elements = stripe.elements();
+        cardElement = elements.create('card');
+        cardElement.mount('#card-element');
+        form.style.display = 'block';
+        log("💳 Ready to save your card...");
+
+        // 3. Handle form submission
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          log("🔄 Confirming card...");
+
+          const { setupIntent, error } = await stripe.confirmCardSetup(clientSecret, {
+            payment_method: {
+              card: cardElement
+            }
+          });
+
+          if (error) {
+            log("❌ Stripe error: " + error.message);
+            sendVerificationResult(false, error.message);
+            return;
+          }
+
+          // 4. Save payment method ID
+          const pmId = setupIntent.payment_method;
+          log("✅ Card saved. Saving to Supabase...");
+
+          const saveRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/save-payment-method", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ payment_method_id: pmId })
+          });
+
+          const saveData = await saveRes.json();
+          if (!saveRes.ok) {
+            log("❌ Failed to save payment method: " + saveData.error);
+            sendVerificationResult(false, saveData.error);
+            return;
+          }
+
+          log("✅ Payment method saved successfully!");
+          sendVerificationResult(true, "Payment method saved successfully");
+        });
+
+      } catch (err) {
+        log("❌ Error: " + err.message);
+        sendVerificationResult(false, err.message);
+      }
+    });
   </script>
+
 </body>
 </html>
 
