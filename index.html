@@ -124,7 +124,7 @@
       const paymentMethodId = setupIntent.payment_method;
       //const stripeCustomerId = setupIntent.customer;
       log("✅ Got payment_method_id: " + paymentMethodId);
-      log("✅ Got stripe_customer_id: " + setupIntent);
+      log(setupIntent);
 
       // Timeout wrapper
       const controller = new AbortController();
