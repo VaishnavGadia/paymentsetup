@@ -151,7 +151,8 @@
       }
 
       if (saveRes.ok) {
-        log("✅ Payment method saved.");
+        // log("✅ Payment method saved.");
+        log(`✅ ${saveData.message}`);
         saveBtn.textContent = "Saved ✅";
         sendResult(true, "Saved successfully.");
       } else {
